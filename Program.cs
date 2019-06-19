@@ -2,57 +2,13 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Device.Location;
     using System.IO;
     using System.Linq;
 
-    internal enum CsvHeaders
-    {
-        CSV_DEFAULT = 0x0,
-        CSV_SKIP_HEADERS = 0x1,
-    }
-
-    internal enum Norms
-    {
-        Infinity_norm = 0,
-        OneNorm = 1,
-        TwoNorm = 2,
-    }
-
     internal class Program
     {
-        private const int _neighborsToReturn = 1;
-        private static readonly Dictionary<string, int> matrixDictionary = new Dictionary<string, int>();
-        private static double[,] dataSet;
-        private static List<string> lines;
-
-        private static void FindNearest(alglib.kdtree kNearestTree)
-        {
-            var agentLocation = GetCoordinates();
-
-            alglib.kdtreequeryknn(kNearestTree, agentLocation, _neighborsToReturn);
-
-            var buffer = new double[0, 0];
-            alglib.kdtreequeryresultsx(kNearestTree, ref buffer);
-
-            Console.WriteLine("{0} => {1}", alglib.ap.format(buffer, 6), GetCityFromGis(buffer));
-        }
-
-        private static string GetCityFromGis(double[,] gis)
-        {
-            double postalCode;
-            var correctGis = $"{gis[0, 0]} {gis[0, 1]}";
-
-            if (matrixDictionary.ContainsKey(correctGis))
-                postalCode = matrixDictionary[correctGis];
-            else
-                return "NOT FOUND";
-
-            var row = lines.Find(f => f.Contains($"{postalCode}")).Split(',');
-
-            return row.Length >= 4 ? row[4] : "NOT IN LIST";
-        }
-
-        private static double[] GetCoordinates()
+        private static GeoCoordinate GetCoordinates()
         {
             Console.WriteLine("Input coordinates:");
             var input = Console.ReadLine();
@@ -66,34 +22,34 @@
             if (xy.Length != 2)
                 Environment.Exit(1);
 
-            return new double[] { double.Parse(xy[0]), double.Parse(xy[1]) };
+            return new GeoCoordinate(ParseDouble(xy[0]), ParseDouble(xy[1]));
         }
 
         private static void Main(string[] args)
         {
+            const int getTopX = 5;
             const string fileName = "./postneStevilke.csv";
 
-            lines = File.ReadLines(fileName).ToList();
+            var agentLocation = GetCoordinates();
 
-            alglib.read_csv(fileName, ',', (int)CsvHeaders.CSV_SKIP_HEADERS, out var matrix);
+            var dataframe = new SortedDictionary<double, (string, GeoCoordinate, int)>(File.ReadLines(fileName)
+                .Select(s =>
+                {
+                    var row = s.Split(',');
+                    var coordinate = ParseCoordinates(row);
+                    return (coordinate, city: row[4], postalCode: ParseInt(row[5]), distance: coordinate.GetDistanceTo(agentLocation));
+                }).ToDictionary(k => k.distance, v => (v.city, v.coordinate, v.postalCode)));
 
-            dataSet = new double[matrix.Length, 2];
-
-            for (int i = 0; i < matrix.GetLength(0); i++)
-            {
-                dataSet[i, 0] = matrix[i, 0];
-                dataSet[i, 1] = matrix[i, 1];
-                matrixDictionary.Add($"{matrix[i, 0]} {matrix[i, 1]}", (int)matrix[i, 5]);
-            }
-
-            const int spaceDimension = 2;
-            const int optionalValues = 0;
-            const int normtype = (int)Norms.TwoNorm;
-
-            // Build & serialize the tree
-            alglib.kdtreebuild(dataSet, spaceDimension, optionalValues, normtype, out var kNearestTree);
-            while (true)
-                FindNearest(kNearestTree);
+            Console.WriteLine("distance, (city, coordinate, postalCode)");
+            foreach (var i in Enumerable.Range(0, getTopX))
+                Console.WriteLine(dataframe.ElementAtOrDefault(i));
+            Console.ReadKey();
         }
+
+        private static GeoCoordinate ParseCoordinates(string[] row) => new GeoCoordinate(ParseDouble(row[0]), ParseDouble(row[1]));
+
+        private static double ParseDouble(string s) => double.TryParse(s, out var d) ? d : 0;
+
+        private static int ParseInt(string s) => int.TryParse(s, out var i) ? i : 0;
     }
 }
