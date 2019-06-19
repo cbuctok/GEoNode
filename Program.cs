@@ -1,7 +1,6 @@
 ﻿namespace GeoNodes
 {
     using System;
-    using System.Collections.Generic;
     using System.Device.Location;
     using System.IO;
     using System.Linq;
@@ -30,20 +29,32 @@
             const int getTopX = 5;
             const string fileName = "./postneStevilke.csv";
 
-            var agentLocation = GetCoordinates();
-
-            var dataframe = new SortedDictionary<double, (string, GeoCoordinate, int)>(File.ReadLines(fileName)
+            var addresses = File
+                .ReadLines(fileName)
                 .Select(s =>
                 {
                     var row = s.Split(',');
-                    var coordinate = ParseCoordinates(row);
-                    return (coordinate, city: row[4], postalCode: ParseInt(row[5]), distance: coordinate.GetDistanceTo(agentLocation));
-                }).ToDictionary(k => k.distance, v => (v.city, v.coordinate, v.postalCode)));
+                    return new Poi
+                    {
+                        City = row[4],
+                        Gis = ParseCoordinates(row),
+                        PostalCode = ParseInt(row[5])
+                    };
+                }).ToList();
 
-            Console.WriteLine("distance, (city, coordinate, postalCode)");
-            foreach (var i in Enumerable.Range(0, getTopX))
-                Console.WriteLine(dataframe.ElementAtOrDefault(i));
-            Console.ReadKey();
+            for (; ; )
+            {
+                var agentLocation = GetCoordinates();
+
+                for (int i = 0; i < addresses.Count; i++)
+                    addresses[i].Distance = addresses[i].Gis.GetDistanceTo(agentLocation);
+
+                var sortedList = addresses.OrderBy(o => o.Distance);
+
+                foreach (var i in Enumerable.Range(0, getTopX))
+                    Console.WriteLine(sortedList.ElementAtOrDefault(i));
+                Console.ReadKey();
+            }
         }
 
         private static GeoCoordinate ParseCoordinates(string[] row) => new GeoCoordinate(ParseDouble(row[0]), ParseDouble(row[1]));
