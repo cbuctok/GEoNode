@@ -26,8 +26,8 @@
 
         private static void Main(string[] args)
         {
-            const int getTopX = 5;
             const string fileName = "./postneStevilke.csv";
+            var getTopX = args.Length > 0 ? ParseInt(args[0]) : 5;
 
             var addresses = File
                 .ReadLines(fileName)
@@ -42,24 +42,22 @@
                     };
                 }).ToList();
 
-            for (; ; )
+            while (true)
             {
                 var agentLocation = GetCoordinates();
 
-                for (int i = 0; i < addresses.Count; i++)
-                    addresses[i].Distance = addresses[i].Gis.GetDistanceTo(agentLocation);
-
-                var sortedList = addresses.OrderBy(o => o.Distance);
-
-                foreach (var i in Enumerable.Range(0, getTopX))
-                    Console.WriteLine(sortedList.ElementAtOrDefault(i));
-                Console.ReadKey();
+                addresses
+                    .Select(s => { s.Distance = s.Gis.GetDistanceTo(agentLocation); return s; })
+                    .OrderBy(o => o.Distance)
+                    .Take(getTopX)
+                    .ToList()
+                    .ForEach(l => Console.WriteLine(l));
             }
         }
 
         private static GeoCoordinate ParseCoordinates(string[] row) => new GeoCoordinate(ParseDouble(row[0]), ParseDouble(row[1]));
 
-        private static double ParseDouble(string s) => double.TryParse(s, out var d) ? d : 0;
+        private static double ParseDouble(string s) => double.TryParse(s, out var d) ? d : 0.0;
 
         private static int ParseInt(string s) => int.TryParse(s, out var i) ? i : 0;
     }
