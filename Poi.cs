@@ -6,7 +6,7 @@
     internal class Poi
     {
         internal string City { get; set; }
-        internal int? PostalCode { get; set; }
+        internal int PostalCode { get; set; }
         internal GeoCoordinate Gis { get; set; }
         internal double Distance { get; set; }
 

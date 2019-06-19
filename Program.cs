@@ -31,6 +31,7 @@
 
             var addresses = File
                 .ReadLines(fileName)
+                .Skip(1)
                 .Select(s =>
                 {
                     var row = s.Split(',');
