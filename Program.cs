@@ -35,7 +35,7 @@
                     .OrderBy(o => o.Distance)
                     .Take(numberOfResults)
                     .ToList()
-                    .ForEach(l => Console.WriteLine(l));
+                    .ForEach(Console.WriteLine);
             }
         }
 
