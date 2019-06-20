@@ -8,11 +8,13 @@
 
     internal class Program
     {
+        private const double earthRadius = 6371000.0;
+
         private static void Main(string[] args)
         {
-            const double distanceMeters = 35 * 1000;
+            const int order = 35;
+            const double distanceMeters = order * 1000;
             const string fileName = "./postneStevilke.csv";
-            var numberOfResults = args.Length > 0 ? ParseInt(args[0]) : 5;
 
             var addresses = File
                 .ReadLines(fileName)
@@ -24,7 +26,7 @@
                     {
                         City = row[4],
                         Gis = ParseCoordinates(row[0], row[1]),
-                        PostalCode = ParseInt(row[5])
+                        PostalCode = row[5]
                     };
                 }).ToList();
 
@@ -32,11 +34,13 @@
             {
                 var agentLocation = ReadCoordinates();
 
+                var sector = (sw: CalculateDistantPoint(agentLocation, -distanceMeters), ne: CalculateDistantPoint(agentLocation, distanceMeters));
+                var geoJson = ToGeoJson(agentLocation, sector);
                 addresses
-                    .Where(w => isWithin(w.Gis, CalculateDistantPoint(agentLocation, -distanceMeters), CalculateDistantPoint(agentLocation, distanceMeters)))
+                    .Where(w => IsCoordinateWithinSector(w.Gis, sector))
                     .Select(s => { s.Distance = s.Gis.GetDistanceTo(agentLocation); return s; })
+                    .Where(w => w.Distance < distanceMeters)
                     .OrderBy(o => o.Distance)
-                    .Take(numberOfResults)
                     .ToList()
                     .ForEach(l => Console.WriteLine(l));
             }
@@ -46,11 +50,9 @@
 
         private static double ParseDouble(string s) => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0.0;
 
-        private static int ParseInt(string s) => int.TryParse(s, out var i) ? i : 0;
-
         private static GeoCoordinate ReadCoordinates()
         {
-            Console.WriteLine("Input coordinates:");
+            Console.WriteLine("************* Input coordinates *************");
             var input = Console.ReadLine();
 
             // 45.33333 44.1234
@@ -67,21 +69,68 @@
 
         private static GeoCoordinate CalculateDistantPoint(GeoCoordinate coordinate, double distanceMeters)
         {
-            const double r_earth = 6371000.0;
-            const double latitude = 200.0;
+            var degreesOffset = (distanceMeters / earthRadius) * (180.0 / Math.PI);
+            var latitude = coordinate.Latitude + degreesOffset;
+            var longitude = coordinate.Longitude + (degreesOffset / Math.Cos(coordinate.Latitude * Math.PI / 180.0));
 
-            var new_latitude = coordinate.Latitude + (distanceMeters / r_earth) * (180.0 / Math.PI);
-            var new_longitude = coordinate.Longitude + (distanceMeters / r_earth) * (180.0 / Math.PI) / Math.Cos(latitude * Math.PI / 180.0);
-
-            return new GeoCoordinate(new_latitude, new_longitude);
+            return new GeoCoordinate(latitude, longitude);
         }
 
-        public static bool isWithin(GeoCoordinate poi, GeoCoordinate southWest, GeoCoordinate northEast)
+        public static bool IsCoordinateWithinSector(GeoCoordinate poi, (GeoCoordinate southWest, GeoCoordinate northEast) sector)
         {
-            return poi.Latitude >= southWest.Latitude
-                && poi.Latitude <= northEast.Latitude
-                && poi.Longitude >= southWest.Longitude
-                && poi.Longitude <= northEast.Longitude;
+            return poi.Latitude >= sector.southWest.Latitude
+                && poi.Latitude <= sector.northEast.Latitude
+                && poi.Longitude >= sector.southWest.Longitude
+                && poi.Longitude <= sector.northEast.Longitude;
+        }
+
+        private static string ToGeoJson(GeoCoordinate agentLocation, (GeoCoordinate sw, GeoCoordinate ne) square)
+        {
+            return @"{
+  'type': 'FeatureCollection',
+  'features': [
+    {
+      'type': 'Feature',
+      'geometry': {
+        'type': 'Point',
+        'coordinates': [CENTERLON, CENTERLAT]
+      },
+      'properties': {
+        'prop0': 'CENTER'
+      }
+    },
+    {
+      'type': 'Feature',
+      'geometry': {
+        'type': 'Point',
+        'coordinates': [SWLON, SWLAT]
+      },
+      'properties': {
+        'prop0': 'SW'
+      }
+    },
+    {
+      'type': 'Feature',
+      'geometry': {
+        'type': 'Point',
+        'coordinates': [NWLON, NWLAT]
+      },
+      'properties': {
+        'prop0': 'NE'
+      }
+    }
+  ]
+}".Replace("CENTERLON", agentLocation.Longitude.ToString("G", CultureInfo.InvariantCulture))
+.Replace("CENTERLAT", agentLocation.Latitude.ToString("G", CultureInfo.InvariantCulture))
+
+.Replace("SWLON", square.sw.Longitude.ToString("G", CultureInfo.InvariantCulture))
+.Replace("SWLAT", square.sw.Latitude.ToString("G", CultureInfo.InvariantCulture))
+
+.Replace("NWLON", square.ne.Longitude.ToString("G", CultureInfo.InvariantCulture))
+.Replace("NWLAT", square.ne.Latitude.ToString("G", CultureInfo.InvariantCulture))
+
+.Replace('\'', '"')
+;
         }
     }
 }
