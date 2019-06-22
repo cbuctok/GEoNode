@@ -6,14 +6,13 @@
     using System.IO;
     using System.Linq;
 
-    internal class Program
+    public class Program
     {
-        private const double earthRadius = 6371000.0;
+        public const double kmFactor = 1000;
 
-        private static void Main(string[] args)
+        public static void Main(string[] args)
         {
-            const int order = 35;
-            const double distanceMeters = order * 1000;
+            const double distanceMeters = 35 * kmFactor;
             const string fileName = "./postneStevilke.csv";
 
             var addresses = File
@@ -34,7 +33,7 @@
             {
                 var agentLocation = ReadCoordinates();
 
-                var sector = (sw: CalculateDistantPoint(agentLocation, -distanceMeters), ne: CalculateDistantPoint(agentLocation, distanceMeters));
+                var sector = GetSector(agentLocation, distanceMeters);
                 var geoJson = ToGeoJson(agentLocation, sector);
                 addresses
                     .Where(w => IsCoordinateWithinSector(w.Gis, sector))
@@ -46,11 +45,42 @@
             }
         }
 
-        private static GeoCoordinate ParseCoordinates(string latitude, string longtitude) => new GeoCoordinate(ParseDouble(latitude), ParseDouble(longtitude));
+        public static GeoCoordinate ParseCoordinates(string latitude, string longtitude) =>
+            new GeoCoordinate(ParseDouble(latitude), ParseDouble(longtitude));
 
-        private static double ParseDouble(string s) => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0.0;
+        public static double ParseDouble(string s) =>
+            double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0.0;
 
-        private static GeoCoordinate ReadCoordinates()
+        public static (GeoCoordinate sw, GeoCoordinate ne) GetSector(GeoCoordinate agentLocation, double distanceMeters) =>
+           (sw: CalculateDistantPoint(agentLocation, -distanceMeters), ne: CalculateDistantPoint(agentLocation, distanceMeters));
+
+        public static bool IsCoordinateWithinSector(GeoCoordinate poi, (GeoCoordinate southWest, GeoCoordinate northEast) sector) =>
+               poi.Latitude >= sector.southWest.Latitude
+            && poi.Latitude <= sector.northEast.Latitude
+            && poi.Longitude >= sector.southWest.Longitude
+            && poi.Longitude <= sector.northEast.Longitude;
+
+        public static GeoCoordinate CalculateDistantPoint(GeoCoordinate coordinate, double distanceMeters)
+        {
+            var degreesOffset = (distanceMeters / EarthRadiusForLatitude(coordinate.Latitude)) * (180.0 / Math.PI);
+            var latitude = coordinate.Latitude + degreesOffset;
+            var longitude = coordinate.Longitude + (degreesOffset / Math.Cos(coordinate.Latitude * Math.PI / 180.0));
+
+            return new GeoCoordinate(latitude, longitude);
+        }
+
+        private static double EarthRadiusForLatitude(double latitude)
+        {
+            const double latTotal = 90;
+            const double earthRadiusPole = 6356.7523 * kmFactor;
+            const double earthRadiusEquator = 6378.1370 * kmFactor;
+            const double step = (earthRadiusEquator - earthRadiusPole) / latTotal;
+
+            // Microsoft® MelurCentric Earth Radius Foundation = 6376.5 * kmFactor;
+            return earthRadiusEquator - (step * latitude);
+        }
+
+        public static GeoCoordinate ReadCoordinates()
         {
             Console.WriteLine("************* Input coordinates *************");
             var input = Console.ReadLine();
@@ -67,26 +97,8 @@
             return new GeoCoordinate(ParseDouble(xy[0]), ParseDouble(xy[1]));
         }
 
-        private static GeoCoordinate CalculateDistantPoint(GeoCoordinate coordinate, double distanceMeters)
-        {
-            var degreesOffset = (distanceMeters / earthRadius) * (180.0 / Math.PI);
-            var latitude = coordinate.Latitude + degreesOffset;
-            var longitude = coordinate.Longitude + (degreesOffset / Math.Cos(coordinate.Latitude * Math.PI / 180.0));
-
-            return new GeoCoordinate(latitude, longitude);
-        }
-
-        public static bool IsCoordinateWithinSector(GeoCoordinate poi, (GeoCoordinate southWest, GeoCoordinate northEast) sector)
-        {
-            return poi.Latitude >= sector.southWest.Latitude
-                && poi.Latitude <= sector.northEast.Latitude
-                && poi.Longitude >= sector.southWest.Longitude
-                && poi.Longitude <= sector.northEast.Longitude;
-        }
-
-        private static string ToGeoJson(GeoCoordinate agentLocation, (GeoCoordinate sw, GeoCoordinate ne) square)
-        {
-            return @"{
+        public static string ToGeoJson(GeoCoordinate agentLocation, (GeoCoordinate sw, GeoCoordinate ne) square) =>
+@"{
   'type': 'FeatureCollection',
   'features': [
     {
@@ -113,7 +125,7 @@
       'type': 'Feature',
       'geometry': {
         'type': 'Point',
-        'coordinates': [NWLON, NWLAT]
+        'coordinates': [NELON, NELAT]
       },
       'properties': {
         'prop0': 'NE'
@@ -126,11 +138,9 @@
 .Replace("SWLON", square.sw.Longitude.ToString("G", CultureInfo.InvariantCulture))
 .Replace("SWLAT", square.sw.Latitude.ToString("G", CultureInfo.InvariantCulture))
 
-.Replace("NWLON", square.ne.Longitude.ToString("G", CultureInfo.InvariantCulture))
-.Replace("NWLAT", square.ne.Latitude.ToString("G", CultureInfo.InvariantCulture))
+.Replace("NELON", square.ne.Longitude.ToString("G", CultureInfo.InvariantCulture))
+.Replace("NELAT", square.ne.Latitude.ToString("G", CultureInfo.InvariantCulture))
 
-.Replace('\'', '"')
-;
-        }
+.Replace('\'', '"');
     }
 }
